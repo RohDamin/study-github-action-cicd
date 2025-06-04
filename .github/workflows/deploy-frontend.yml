@@ -1,0 +1,44 @@
+name: Deploy Frontend to S3 (Test / Prod)
+
+on:
+  push:
+    branches:
+      - test
+      - prod
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set environment-specific bucket
+        run: |
+          if [[ "${GITHUB_REF##*/}" == "prod" ]]; then
+            echo "S3_BUCKET=${{ secrets.PROD_S3_BUCKET }}" >> $GITHUB_ENV
+          else
+            echo "S3_BUCKET=${{ secrets.TEST_S3_BUCKET }}" >> $GITHUB_ENV
+          fi
+
+      - name: Upload to S3
+        uses: jakejarvis/s3-sync-action@master
+        with:
+          args: --delete
+        env:
+          AWS_S3_BUCKET: ${{ env.S3_BUCKET }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: "ap-northeast-2"
+          SOURCE_DIR: "frontend"
+
+      - name: Invalidate CloudFront cache (only for prod)
+        if: github.ref == 'refs/heads/prod'
+        run: |
+          aws cloudfront create-invalidation \
+            --distribution-id ${{ secrets.CLOUDFRONT_DIST_ID }} \
+            --paths "/*"
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_REGION: "ap-northeast-2"
