@@ -1,35 +1,45 @@
-name: Deploy Backend to EC2
+name: Deploy Backend to EC2 (Test / Prod)
 
 on:
   push:
-    branches: [main]
+    branches:
+      - test
+      - prod
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v3
+      - name: Checkout code
+        uses: actions/checkout@v3
 
-      - name: Copy to EC2
-        uses: appleboy/scp-action@v0.1.4
-        with:
-          host: ${{ secrets.HOST }}
-          username: ${{ secrets.USERNAME }}
-          key: ${{ secrets.PRIVATE_KEY }}
-          port: ${{ secrets.PORT }}
-          source: "."
-          target: ${{ secrets.TARGET_DIR }}
+      - name: Setup SSH key
+        run: |
+          echo "${{ secrets.PRIVATE_KEY }}" > key.pem
+          chmod 600 key.pem
 
-      - name: SSH into EC2 and Deploy
-        uses: appleboy/ssh-action@v0.1.10
-        with:
-          host: ${{ secrets.HOST }}
-          username: ${{ secrets.USERNAME }}
-          key: ${{ secrets.PRIVATE_KEY }}
-          port: ${{ secrets.PORT }}
-          script: |
-            cd ${{ secrets.TARGET_DIR }}
-            ./backend/gradlew -p backend clean build
-            docker compose down
-            docker compose up --build -d
+      - name: Set Environment Variables (Test / Prod)
+        run: |
+          if [[ "${GITHUB_REF##*/}" == "prod" ]]; then
+            echo "HOST=${{ secrets.PROD_HOST }}" >> $GITHUB_ENV
+            echo "TARGET_DIR=${{ secrets.PROD_TARGET_DIR }}" >> $GITHUB_ENV
+          else
+            echo "HOST=${{ secrets.TEST_HOST }}" >> $GITHUB_ENV
+            echo "TARGET_DIR=${{ secrets.TEST_TARGET_DIR }}" >> $GITHUB_ENV
+          fi
+
+      - name: SCP backend project to EC2
+        run: |
+          scp -i key.pem -o StrictHostKeyChecking=no -r ./backend ${{ secrets.USERNAME }}@${{ env.HOST }}:${{ env.TARGET_DIR }}
+
+      - name: SSH into EC2 and deploy
+        run: |
+          ssh -i key.pem -o StrictHostKeyChecking=no ${{ secrets.USERNAME }}@${{ env.HOST }} << EOF
+            cd ${env.TARGET_DIR}/backend
+            ./gradlew build
+            docker stop backend || true
+            docker rm backend || true
+            docker build -t backend .
+            docker run -d -p 8080:8080 --name backend backend
+          EOF
