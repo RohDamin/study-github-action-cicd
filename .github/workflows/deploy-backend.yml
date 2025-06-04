@@ -36,10 +36,11 @@ jobs:
       - name: SSH into EC2 and deploy
         run: |
           ssh -i key.pem -o StrictHostKeyChecking=no ${{ secrets.USERNAME }}@${{ env.HOST }} << EOF
-            cd ${env.TARGET_DIR}/backend
-            ./gradlew build
-            docker stop backend || true
-            docker rm backend || true
-            docker build -t backend .
-            docker run -d -p 8080:8080 --name backend backend
+          cd $TARGET_DIR/backend
+          ./gradlew build
+          docker stop backend || true
+          docker rm backend || true
+          docker build -t backend .
+          docker run -d -p 8080:8080 --name backend backend
           EOF
+
