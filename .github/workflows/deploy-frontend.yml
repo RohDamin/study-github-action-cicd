@@ -5,6 +5,8 @@ on:
     branches:
       - test
       - prod
+    paths:
+      - 'frontend/**'
 
 jobs:
   deploy:
@@ -32,13 +34,19 @@ jobs:
           AWS_REGION: "ap-northeast-2"
           SOURCE_DIR: "frontend"
 
-      - name: Invalidate CloudFront cache (only for prod)
-        if: github.ref == 'refs/heads/prod'
+      - name: Invalidate CloudFront cache
         run: |
+          if [[ "${GITHUB_REF##*/}" == "prod" ]]; then
+            DIST_ID=${{ secrets.PROD_CLOUDFRONT_DIST_ID }}
+          else
+            DIST_ID=${{ secrets.TEST_CLOUDFRONT_DIST_ID }}
+          fi
+
           aws cloudfront create-invalidation \
-            --distribution-id ${{ secrets.CLOUDFRONT_DIST_ID }} \
+            --distribution-id $DIST_ID \
             --paths "/*"
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           AWS_REGION: "ap-northeast-2"
+
